@@ -11,7 +11,18 @@ async function loadLourdesGrottos() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const grottos = await response.json();
+        let grottos = await response.json();
+        
+        // Check for provincie query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const provincieFilter = urlParams.get('provincie');
+        
+        // Filter grottos if provincie parameter is provided
+        if (provincieFilter) {
+            grottos = grottos.filter(grotto => 
+                grotto.provincie.toLowerCase() === provincieFilter.toLowerCase()
+            );
+        }
         
         // Hide loading message
         loadingElement.style.display = 'none';
@@ -32,7 +43,11 @@ async function loadLourdesGrottos() {
                     <p><strong>Categorie:</strong> <span class="categorie ${grotto.categorie.toLowerCase()}">${grotto.categorie}</span></p>
                     ${grotto.bestandsnaam ? `
                         <div class="image-container">
-                            <img src="static/thumbnail/${grotto.bestandsnaam}" alt="Lourdesgrot ${grotto.locatie}" class="grotto-image" />
+                            <img src="static/thumbnail/${grotto.bestandsnaam}" 
+                                 alt="Lourdesgrot ${grotto.locatie}" 
+                                 class="grotto-image" 
+                                 data-large-src="static/1024x1024/${grotto.bestandsnaam}"
+                                 onclick="openLightbox(this)" />
                         </div>
                     ` : ''}
                 </div>
@@ -44,19 +59,131 @@ async function loadLourdesGrottos() {
         // Add summary information
         const summary = document.createElement('div');
         summary.className = 'summary';
-        summary.innerHTML = `
-            <h2>Samenvatting</h2>
-            <p>Totaal aantal grotten: <strong>${grottos.length}</strong></p>
-            <p>Provincies: <strong>${[...new Set(grottos.map(g => g.provincie))].length}</strong></p>
-        `;
+        
+        let summaryContent = `<h2>Samenvatting</h2>`;
+        
+        if (provincieFilter) {
+            summaryContent += `
+                <p>Gefilterd op provincie: <strong>${provincieFilter}</strong></p>
+                <p>Aantal grotten in ${provincieFilter}: <strong>${grottos.length}</strong></p>
+            `;
+        } else {
+            summaryContent += `
+                <p>Totaal aantal grotten: <strong>${grottos.length}</strong></p>
+                <p>Provincies: <strong>${[...new Set(grottos.map(g => g.provincie))].length}</strong></p>
+            `;
+        }
+        
+        summary.innerHTML = summaryContent;
         
         containerElement.insertBefore(summary, containerElement.firstChild);
+        
+        // Create province links
+        createProvinceLinks(provincieFilter);
+        
+        // Create lightbox
+        createLightbox();
         
     } catch (error) {
         loadingElement.innerHTML = `<p style="color: red;">Fout bij het laden van gegevens: ${error.message}</p>`;
         console.error('Error loading data:', error);
     }
 }
+
+// Create province links in sidebar
+async function createProvinceLinks(currentFilter) {
+    try {
+        // Fetch all grottos data for province links
+        const response = await fetch('lg.json');
+        const allGrottos = await response.json();
+        
+        const provinceLinksContainer = document.getElementById('province-links');
+        
+        // Clear existing links
+        provinceLinksContainer.innerHTML = '';
+        
+        // Get unique provinces and count grottos per province
+        const provinceData = {};
+        allGrottos.forEach(grotto => {
+            if (!provinceData[grotto.provincie]) {
+                provinceData[grotto.provincie] = 0;
+            }
+            provinceData[grotto.provincie]++;
+        });
+        
+        // Sort provinces alphabetically
+        const sortedProvinces = Object.keys(provinceData).sort();
+        
+        // Add province links
+        sortedProvinces.forEach(provincie => {
+            const listItem = document.createElement('li');
+            const link = document.createElement('a');
+            
+            link.href = `?provincie=${encodeURIComponent(provincie)}`;
+            link.innerHTML = `${provincie} <span class="province-count">(${provinceData[provincie]})</span>`;
+            
+            // Set active state
+            if (currentFilter && currentFilter.toLowerCase() === provincie.toLowerCase()) {
+                link.classList.add('active');
+            }
+            
+            listItem.appendChild(link);
+            provinceLinksContainer.appendChild(listItem);
+        });
+        
+        console.log('Province links created:', sortedProvinces.length);
+        
+    } catch (error) {
+        console.error('Error creating province links:', error);
+    }
+}
+
+// Create lightbox HTML
+function createLightbox() {
+    const lightbox = document.createElement('div');
+    lightbox.className = 'lightbox';
+    lightbox.id = 'lightbox';
+    lightbox.innerHTML = `
+        <div class="lightbox-content">
+            <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+            <img class="lightbox-image" id="lightbox-image" src="" alt="" />
+        </div>
+    `;
+    document.body.appendChild(lightbox);
+    
+    // Close lightbox when clicking outside the image
+    lightbox.addEventListener('click', function(e) {
+        if (e.target === lightbox) {
+            closeLightbox();
+        }
+    });
+}
+
+// Open lightbox with image
+function openLightbox(imgElement) {
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImage = document.getElementById('lightbox-image');
+    
+    lightboxImage.src = imgElement.dataset.largeSrc;
+    lightboxImage.alt = imgElement.alt;
+    
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden'; // Prevent scrolling
+}
+
+// Close lightbox
+function closeLightbox() {
+    const lightbox = document.getElementById('lightbox');
+    lightbox.classList.remove('active');
+    document.body.style.overflow = ''; // Restore scrolling
+}
+
+// Close lightbox with Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeLightbox();
+    }
+});
 
 // Load data when page is ready
 document.addEventListener('DOMContentLoaded', loadLourdesGrottos);
